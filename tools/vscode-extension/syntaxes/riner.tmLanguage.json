@@ -1,0 +1,135 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Riner",
+  "scopeName": "source.riner",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#builtins" },
+    { "include": "#functions-declaration" },
+    { "include": "#functions-call" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#booleans" },
+    { "include": "#nil" },
+    { "include": "#operators" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.riner",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.riner",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.riner",
+          "match": "\\b(if|else|for|return)\\b"
+        },
+        {
+          "name": "keyword.declaration.riner",
+          "match": "\\b(var|func|struct|import)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.primitive.riner",
+          "match": "\\b(int|float|string|bool|void)\\b"
+        },
+        {
+          "name": "entity.name.type.riner",
+          "match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
+        }
+      ]
+    },
+    "builtins": {
+      "patterns": [
+        {
+          "name": "support.function.builtin.riner",
+          "match": "\\b(print|println|len|append)(?=\\s*\\()"
+        }
+      ]
+    },
+    "functions-declaration": {
+      "patterns": [
+        {
+          "match": "\\b(func)\\s+([a-z_][a-zA-Z0-9_]*)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "keyword.declaration.riner" },
+            "2": { "name": "entity.name.function.riner" }
+          }
+        }
+      ]
+    },
+    "functions-call": {
+      "patterns": [
+        {
+          "name": "entity.name.function.riner",
+          "match": "\\b(?!\\b(?:if|else|for|return|var|func|struct|import|print|println|len|append)\\b)([a-z_][a-zA-Z0-9_]*)(?=\\s*\\()"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.riner",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.riner",
+              "match": "\\\\[\"'\\\\nrt]"
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.riner",
+          "match": "\\b[0-9]+\\.[0-9]+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.riner",
+          "match": "\\b[0-9]+\\b"
+        }
+      ]
+    },
+    "booleans": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.riner",
+          "match": "\\b(true|false)\\b"
+        }
+      ]
+    },
+    "nil": {
+      "patterns": [
+        {
+          "name": "constant.language.null.riner",
+          "match": "\\bnil\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.riner",
+          "match": "(==|!=|<=|>=|&&|\\|\\||\\+|-|\\*|/|%|<|>|!|=)"
+        }
+      ]
+    }
+  }
+}
