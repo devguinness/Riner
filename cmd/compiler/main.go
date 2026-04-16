@@ -7,6 +7,7 @@ import (
 	"github.com/devguinness/Riner/internal/interpreter"
 	"github.com/devguinness/Riner/internal/lexer"
 	"github.com/devguinness/Riner/internal/parser"
+	"github.com/devguinness/Riner/internal/sema"
 )
 
 func main() {
@@ -49,6 +50,12 @@ func runFile(path string) {
 	p := parser.New(tokens)
 	prog, err := p.Parse()
 	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	c := sema.New()
+	if err := c.Check(prog); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
