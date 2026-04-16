@@ -35,6 +35,8 @@ func (p *Parser) parseStatement() (Node, error) {
 	tok := p.current()
 
 	switch tok.Type {
+	case lexer.TOKEN_IMPORT:
+		return p.parseImportStmt()
 	case lexer.TOKEN_VAR:
 		return p.parseVarDecl()
 	case lexer.TOKEN_FUNC:
@@ -54,13 +56,34 @@ func (p *Parser) parseStatement() (Node, error) {
 	return nil, p.errorf("unexpected token %s", tok.Type)
 }
 
-func (p *Parser) parseVarDecl() (*VarDecl, error) {
+func (p *Parser) parseVarDecl() (Node, error) {
 	line, col := p.current().Line, p.current().Column
 	p.advance() // consume 'var'
 
 	name, err := p.expect(lexer.TOKEN_IDENT)
 	if err != nil {
 		return nil, err
+	}
+
+	// multi-var: var a, b = expr
+	if p.current().Type == lexer.TOKEN_COMMA {
+		names := []string{name.Value}
+		for p.current().Type == lexer.TOKEN_COMMA {
+			p.advance()
+			n, err := p.expect(lexer.TOKEN_IDENT)
+			if err != nil {
+				return nil, err
+			}
+			names = append(names, n.Value)
+		}
+		if _, err := p.expect(lexer.TOKEN_ASSIGN); err != nil {
+			return nil, err
+		}
+		value, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		return &MultiVarDecl{Names: names, Value: value, Line: line, Col: col}, nil
 	}
 
 	// optional explicit type
@@ -80,6 +103,16 @@ func (p *Parser) parseVarDecl() (*VarDecl, error) {
 	}
 
 	return &VarDecl{Name: name.Value, Type: typeName, Value: value, Line: line, Col: col}, nil
+}
+
+func (p *Parser) parseImportStmt() (*ImportStmt, error) {
+	line, col := p.current().Line, p.current().Column
+	p.advance() // consume 'import'
+	path, err := p.expect(lexer.TOKEN_STRING)
+	if err != nil {
+		return nil, err
+	}
+	return &ImportStmt{Path: path.Value, Line: line, Col: col}, nil
 }
 
 func (p *Parser) parseFuncDecl() (*FuncDecl, error) {
@@ -273,6 +306,10 @@ func (p *Parser) parseClassicFor(line, col int) (*ForStmt, error) {
 
 // parseIdentStmt handles: assignment or function call as a statement
 func (p *Parser) parseIdentStmt() (Node, error) {
+	// index assignment: name[expr] = expr
+	if p.peek().Type == lexer.TOKEN_LBRACKET {
+		return p.parseIndexAssign()
+	}
 	if p.peek().Type == lexer.TOKEN_ASSIGN {
 		return p.parseAssignStmt()
 	}
@@ -281,6 +318,28 @@ func (p *Parser) parseIdentStmt() (Node, error) {
 		return nil, err
 	}
 	return &ExprStmt{Expr: expr}, nil
+}
+
+func (p *Parser) parseIndexAssign() (*IndexAssign, error) {
+	line, col := p.current().Line, p.current().Column
+	obj := &Identifier{Name: p.current().Value, Line: p.current().Line, Col: p.current().Column}
+	p.advance() // consume ident
+	p.advance() // consume '['
+	index, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lexer.TOKEN_RBRACKET); err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lexer.TOKEN_ASSIGN); err != nil {
+		return nil, err
+	}
+	value, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	return &IndexAssign{Object: obj, Index: index, Value: value, Line: line, Col: col}, nil
 }
 
 func (p *Parser) parseAssignStmt() (*AssignStmt, error) {
@@ -450,11 +509,66 @@ func (p *Parser) parsePrimary() (Node, error) {
 		}
 		return expr, nil
 
+	case lexer.TOKEN_LBRACKET:
+		return p.parseArrayLiteral()
+	case lexer.TOKEN_LBRACE:
+		return p.parseMapLiteral()
 	case lexer.TOKEN_IDENT:
 		return p.parseIdentExpr()
 	}
 
 	return nil, p.errorf("unexpected token %s %q", tok.Type, tok.Value)
+}
+
+func (p *Parser) parseArrayLiteral() (*ArrayLiteral, error) {
+	line, col := p.current().Line, p.current().Column
+	p.advance() // consume '['
+
+	var elements []Node
+	for p.current().Type != lexer.TOKEN_RBRACKET && !p.isEOF() {
+		el, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		elements = append(elements, el)
+		if p.current().Type == lexer.TOKEN_COMMA {
+			p.advance()
+		}
+	}
+
+	if _, err := p.expect(lexer.TOKEN_RBRACKET); err != nil {
+		return nil, err
+	}
+	return &ArrayLiteral{Elements: elements, Line: line, Col: col}, nil
+}
+
+func (p *Parser) parseMapLiteral() (*MapLiteral, error) {
+	line, col := p.current().Line, p.current().Column
+	p.advance() // consume '{'
+
+	var pairs []MapPair
+	for p.current().Type != lexer.TOKEN_RBRACE && !p.isEOF() {
+		key, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(lexer.TOKEN_COLON); err != nil {
+			return nil, err
+		}
+		val, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		pairs = append(pairs, MapPair{Key: key, Value: val})
+		if p.current().Type == lexer.TOKEN_COMMA {
+			p.advance()
+		}
+	}
+
+	if _, err := p.expect(lexer.TOKEN_RBRACE); err != nil {
+		return nil, err
+	}
+	return &MapLiteral{Pairs: pairs, Line: line, Col: col}, nil
 }
 
 func (p *Parser) parseIdentExpr() (Node, error) {
@@ -472,15 +586,30 @@ func (p *Parser) parseIdentExpr() (Node, error) {
 		return p.parseCallExpr(tok)
 	}
 
-	// field access: name.field
+	// field access and index access: name.field or name[index]
 	node := Node(&Identifier{Name: tok.Value, Line: tok.Line, Col: tok.Column})
-	for p.current().Type == lexer.TOKEN_DOT {
-		p.advance()
-		field, err := p.expect(lexer.TOKEN_IDENT)
-		if err != nil {
-			return nil, err
+	for {
+		if p.current().Type == lexer.TOKEN_DOT {
+			p.advance()
+			field, err := p.expect(lexer.TOKEN_IDENT)
+			if err != nil {
+				return nil, err
+			}
+			node = &FieldAccess{Object: node, Field: field.Value, Line: field.Line, Col: field.Column}
+		} else if p.current().Type == lexer.TOKEN_LBRACKET {
+			line, col := p.current().Line, p.current().Column
+			p.advance()
+			index, err := p.parseExpr()
+			if err != nil {
+				return nil, err
+			}
+			if _, err := p.expect(lexer.TOKEN_RBRACKET); err != nil {
+				return nil, err
+			}
+			node = &IndexExpr{Object: node, Index: index, Line: line, Col: col}
+		} else {
+			break
 		}
-		node = &FieldAccess{Object: node, Field: field.Value, Line: field.Line, Col: field.Column}
 	}
 
 	return node, nil

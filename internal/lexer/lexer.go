@@ -163,6 +163,12 @@ func (l *Lexer) readSymbol() Token {
 	case ':':
 		l.advance()
 		return Token{Type: TOKEN_COLON, Value: ":", Line: line, Column: col}
+	case '[':
+		l.advance()
+		return Token{Type: TOKEN_LBRACKET, Value: "[", Line: line, Column: col}
+	case ']':
+		l.advance()
+		return Token{Type: TOKEN_RBRACKET, Value: "]", Line: line, Column: col}
 	case '=':
 		l.advance()
 		if l.pos < len(l.source) && l.current() == '=' {

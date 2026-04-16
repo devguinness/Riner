@@ -199,3 +199,67 @@ type FieldValue struct {
 	Name  string
 	Value Node
 }
+
+// Arrays
+
+type ArrayLiteral struct {
+	Elements []Node
+	Line     int
+	Col      int
+}
+
+func (a *ArrayLiteral) nodeType() string { return "ArrayLiteral" }
+
+type IndexExpr struct {
+	Object Node
+	Index  Node
+	Line   int
+	Col    int
+}
+
+func (i *IndexExpr) nodeType() string { return "IndexExpr" }
+
+type IndexAssign struct {
+	Object Node
+	Index  Node
+	Value  Node
+	Line   int
+	Col    int
+}
+
+func (i *IndexAssign) nodeType() string { return "IndexAssign" }
+
+// Maps
+
+type MapLiteral struct {
+	Pairs []MapPair
+	Line  int
+	Col   int
+}
+
+func (m *MapLiteral) nodeType() string { return "MapLiteral" }
+
+type MapPair struct {
+	Key   Node
+	Value Node
+}
+
+// Multi-return var declaration: var result, err = expr
+type MultiVarDecl struct {
+	Names []string
+	Value Node
+	Line  int
+	Col   int
+}
+
+func (m *MultiVarDecl) nodeType() string { return "MultiVarDecl" }
+
+// Import
+
+type ImportStmt struct {
+	Path string
+	Line int
+	Col  int
+}
+
+func (i *ImportStmt) nodeType() string { return "ImportStmt" }

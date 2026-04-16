@@ -1,0 +1,15 @@
+func main() {
+    var nums = [1, 2, 3]
+    print(nums[0])
+    nums[0] = 99
+    print(nums[0])
+
+    var idades = {"alice": 30, "bob": 25}
+    print(idades["alice"])
+    idades["carlos"] = 40
+    print(idades["carlos"])
+
+    print(len(nums))
+    var nums2 = append(nums, 4)
+    print(len(nums2))
+}

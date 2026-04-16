@@ -19,13 +19,15 @@ func (e *errReturn) Error() string { return "__return__" }
 
 // Value represents any runtime value in Riner
 type Value struct {
-	kind   string // "int", "float", "string", "bool", "nil", "struct", "func"
-	intVal int64
-	fltVal float64
-	strVal string
+	kind    string // "int", "float", "string", "bool", "nil", "struct", "func", "array", "map"
+	intVal  int64
+	fltVal  float64
+	strVal  string
 	boolVal bool
-	fields  map[string]*Value // for structs
-	fn      *parser.FuncDecl  // for functions
+	fields  map[string]*Value  // for structs
+	elems   []*Value           // for arrays
+	pairs   map[string]*Value  // for maps
+	fn      *parser.FuncDecl   // for functions
 }
 
 var Nil = &Value{kind: "nil"}
@@ -58,6 +60,14 @@ func (v *Value) String() string {
 		return "<struct>"
 	case "func":
 		return fmt.Sprintf("<func %s>", v.fn.Name)
+	case "array":
+		parts := make([]string, len(v.elems))
+		for i, e := range v.elems {
+			parts[i] = e.String()
+		}
+		return "[" + strings.Join(parts, ", ") + "]"
+	case "map":
+		return "<map>"
 	}
 	return "?"
 }
@@ -200,6 +210,55 @@ func (i *Interpreter) execStmt(node parser.Node, env *Environment) (*Value, erro
 	case *parser.StructDecl:
 		i.structs[s.Name] = s
 		return nil, nil
+
+	case *parser.MultiVarDecl:
+		val, err := i.evalExpr(s.Value, env)
+		if err != nil {
+			return nil, err
+		}
+		// expect array of values for multi-return
+		if val.kind == "array" && len(val.elems) == len(s.Names) {
+			for idx, name := range s.Names {
+				env.set(name, val.elems[idx])
+			}
+		} else {
+			for _, name := range s.Names {
+				env.set(name, val)
+			}
+		}
+		return nil, nil
+
+	case *parser.IndexAssign:
+		obj, err := i.evalExpr(s.Object, env)
+		if err != nil {
+			return nil, err
+		}
+		idx, err := i.evalExpr(s.Index, env)
+		if err != nil {
+			return nil, err
+		}
+		val, err := i.evalExpr(s.Value, env)
+		if err != nil {
+			return nil, err
+		}
+		if obj.kind == "array" {
+			if idx.kind != "int" {
+				return nil, i.errorf(s.Line, s.Col, "array index must be int")
+			}
+			if idx.intVal < 0 || int(idx.intVal) >= len(obj.elems) {
+				return nil, i.errorf(s.Line, s.Col, "index out of bounds")
+			}
+			obj.elems[idx.intVal] = val
+		} else if obj.kind == "map" {
+			obj.pairs[idx.String()] = val
+		} else {
+			return nil, i.errorf(s.Line, s.Col, "cannot index %s", obj.kind)
+		}
+		return nil, nil
+
+	case *parser.ImportStmt:
+		// imports are resolved at a later stage
+		return nil, nil
 	}
 
 	return nil, fmt.Errorf("unknown statement type: %T", node)
@@ -290,9 +349,82 @@ func (i *Interpreter) evalExpr(node parser.Node, env *Environment) (*Value, erro
 
 	case *parser.StructLiteral:
 		return i.evalStructLiteral(e, env)
+
+	case *parser.ArrayLiteral:
+		return i.evalArrayLiteral(e, env)
+
+	case *parser.MapLiteral:
+		return i.evalMapLiteral(e, env)
+
+	case *parser.IndexExpr:
+		return i.evalIndexExpr(e, env)
 	}
 
 	return nil, fmt.Errorf("unknown expression type: %T", node)
+}
+
+func (i *Interpreter) evalArrayLiteral(e *parser.ArrayLiteral, env *Environment) (*Value, error) {
+	elems := make([]*Value, len(e.Elements))
+	for idx, el := range e.Elements {
+		val, err := i.evalExpr(el, env)
+		if err != nil {
+			return nil, err
+		}
+		elems[idx] = val
+	}
+	return &Value{kind: "array", elems: elems}, nil
+}
+
+func (i *Interpreter) evalMapLiteral(e *parser.MapLiteral, env *Environment) (*Value, error) {
+	pairs := make(map[string]*Value)
+	for _, p := range e.Pairs {
+		key, err := i.evalExpr(p.Key, env)
+		if err != nil {
+			return nil, err
+		}
+		val, err := i.evalExpr(p.Value, env)
+		if err != nil {
+			return nil, err
+		}
+		pairs[key.String()] = val
+	}
+	return &Value{kind: "map", pairs: pairs}, nil
+}
+
+func (i *Interpreter) evalIndexExpr(e *parser.IndexExpr, env *Environment) (*Value, error) {
+	obj, err := i.evalExpr(e.Object, env)
+	if err != nil {
+		return nil, err
+	}
+	idx, err := i.evalExpr(e.Index, env)
+	if err != nil {
+		return nil, err
+	}
+	switch obj.kind {
+	case "array":
+		if idx.kind != "int" {
+			return nil, i.errorf(e.Line, e.Col, "array index must be int")
+		}
+		if idx.intVal < 0 || int(idx.intVal) >= len(obj.elems) {
+			return nil, i.errorf(e.Line, e.Col, "index out of bounds")
+		}
+		return obj.elems[idx.intVal], nil
+	case "map":
+		val, ok := obj.pairs[idx.String()]
+		if !ok {
+			return Nil, nil
+		}
+		return val, nil
+	case "string":
+		if idx.kind != "int" {
+			return nil, i.errorf(e.Line, e.Col, "string index must be int")
+		}
+		if idx.intVal < 0 || int(idx.intVal) >= len(obj.strVal) {
+			return nil, i.errorf(e.Line, e.Col, "index out of bounds")
+		}
+		return strVal(string(obj.strVal[idx.intVal])), nil
+	}
+	return nil, i.errorf(e.Line, e.Col, "cannot index %s", obj.kind)
 }
 
 func (i *Interpreter) evalBinary(e *parser.BinaryExpr, env *Environment) (*Value, error) {
@@ -394,6 +526,28 @@ func (i *Interpreter) evalUnary(e *parser.UnaryExpr, env *Environment) (*Value, 
 func (i *Interpreter) evalCall(e *parser.CallExpr, env *Environment) (*Value, error) {
 	// built-ins
 	switch e.Function {
+	case "append":
+		if len(e.Args) < 2 {
+			return nil, i.errorf(e.Line, e.Col, "append expects at least 2 arguments")
+		}
+		arr, err := i.evalExpr(e.Args[0], env)
+		if err != nil {
+			return nil, err
+		}
+		if arr.kind != "array" {
+			return nil, i.errorf(e.Line, e.Col, "append expects array as first argument")
+		}
+		newElems := make([]*Value, len(arr.elems))
+		copy(newElems, arr.elems)
+		for _, argNode := range e.Args[1:] {
+			val, err := i.evalExpr(argNode, env)
+			if err != nil {
+				return nil, err
+			}
+			newElems = append(newElems, val)
+		}
+		return &Value{kind: "array", elems: newElems}, nil
+
 	case "print", "println":
 		args, err := i.evalArgs(e.Args, env)
 		if err != nil {
@@ -418,10 +572,14 @@ func (i *Interpreter) evalCall(e *parser.CallExpr, env *Environment) (*Value, er
 		if err != nil {
 			return nil, err
 		}
-		if arg.kind != "string" {
-			return nil, i.errorf(e.Line, e.Col, "len expects string, got %s", arg.kind)
+		switch arg.kind {
+		case "string":
+			return intVal(int64(len(arg.strVal))), nil
+		case "array":
+			return intVal(int64(len(arg.elems))), nil
+		default:
+			return nil, i.errorf(e.Line, e.Col, "len expects string or array, got %s", arg.kind)
 		}
-		return intVal(int64(len(arg.strVal))), nil
 	}
 
 	// user-defined function
