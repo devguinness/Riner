@@ -1,19 +1,24 @@
 {
   "name": "riner-lang",
   "displayName": "Riner Language",
-  "description": "Syntax highlighting for Riner",
-  "version": "0.0.1",
+  "description": "Syntax highlighting and language support for Riner",
+  "version": "0.1.0",
   "publisher": "devguinness",
   "engines": {
     "vscode": "^1.80.0"
   },
   "categories": ["Programming Languages"],
+  "activationEvents": [
+    "onLanguage:riner"
+  ],
+  "main": "./extension.js",
   "contributes": {
     "languages": [
       {
         "id": "riner",
         "aliases": ["Riner", "riner"],
-        "extensions": [".rn"]
+        "extensions": [".rn"],
+        "configuration": "./language-configuration.json"
       }
     ],
     "grammars": [
@@ -23,5 +28,8 @@
         "path": "./syntaxes/riner.tmLanguage.json"
       }
     ]
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
   }
 }
