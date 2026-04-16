@@ -119,15 +119,16 @@ func buildFile(path string) {
 
 	// compile with gcc
 	outfile := base
-	cmd := exec.Command("gcc", "-o", outfile, cfile)
+	runtimeDir := filepath.Join(filepath.Dir(os.Args[0]), "runtime")
+cmd := exec.Command("gcc", "-I", runtimeDir, "-o", outfile, cfile)
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		fmt.Fprintln(os.Stderr, "compilation failed")
-		os.Exit(1)
+    	fmt.Fprintf(os.Stderr, "compilation failed: %s\n", err)
+    	os.Exit(1)
 	}
 
 	// remove intermediate C file
-	os.Remove(cfile)
+	// os.Remove(cfile)
 
 	fmt.Printf("built: %s\n", outfile)
 }
